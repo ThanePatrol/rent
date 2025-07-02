@@ -20,7 +20,10 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 )
 
-const SECONDS_IN_WEEK = 7 * 24 * 60 * 60
+const (
+	DAYS_IN_WEEK   = 7
+	SECONDS_IN_DAY = float64(60 * 60 * 24)
+)
 
 type Config struct {
 	Account string
@@ -65,14 +68,15 @@ type Renter struct {
 	TimeLastPaid int64  `json:"unix_time_last_paid"`
 }
 
-func (r *Renter) calculateRent(curTime int64) float64 {
-	rentInSeconds := float64(r.RentAmount) / float64(SECONDS_IN_WEEK)
+func (r *Renter) calculateRent(curTime int64) int64 {
+	rentInDays := float64(r.RentAmount) / float64(DAYS_IN_WEEK)
 	secondsSinceLastPay := curTime - r.TimeLastPaid
-	amountToPay := rentInSeconds * float64(secondsSinceLastPay)
-	return amountToPay
+	daysSinceLastPay := float64(secondsSinceLastPay) / SECONDS_IN_DAY
+	amountToPay := rentInDays * daysSinceLastPay
+	return int64(amountToPay)
 }
 
-func postRent(renter *Renter, amount float64, client bot.Client) error {
+func postRent(renter *Renter, amount int64, client bot.Client) error {
 	message := `
 		# Rent Notice <@_USER>
 
@@ -85,7 +89,7 @@ func postRent(renter *Renter, amount float64, client bot.Client) error {
 
 	`
 	message = strings.Replace(message, "_USER", fmt.Sprintf("%d", renter.UserId), 1)
-	message = strings.Replace(message, "_OWING", fmt.Sprintf("%.2f", amount), 1)
+	message = strings.Replace(message, "_OWING", fmt.Sprintf("%d", amount), 1)
 	message = strings.Replace(message, "_BSB", conf.Bsb, 1)
 	message = strings.Replace(message, "_ACC", conf.Account, 1)
 	message = strings.Replace(message, "_DADDY", conf.UserId, 1)
@@ -147,7 +151,7 @@ func (s *Server) readSendRent(ctx context.Context, fp string) error {
 		ctx,
 		"sent renter with amount",
 		slog.String("renter", renter.Email),
-		slog.Float64("amount", amountToPay),
+		slog.Int64("amount", amountToPay),
 		slog.String("time last paid", unixToStr(oldTime)),
 		slog.String("time paid", unixToStr(renter.TimeLastPaid)),
 	)
